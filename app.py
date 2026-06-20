@@ -6,27 +6,14 @@ from bs4 import BeautifulSoup
 import re
 from pypdf import PdfReader
 
-# 1. Page Configuration
+# Page Configuration
 st.set_page_config(
     page_title="Nischal Citation | OSCOLA 4th Edition", 
     page_icon="✒️",
     layout="centered"
 )
 
-# 2. Pre-initialize variables in Streamlit memory maps
-if "fetched_title" not in st.session_state: st.session_state.fetched_title = ""
-if "fetched_site" not in st.session_state: st.session_state.fetched_site = ""
-if "fetched_date" not in st.session_state: st.session_state.fetched_date = ""
-
-# Session state hooks for PDF extraction fallbacks
-if "pdf_name" not in st.session_state: st.session_state.pdf_name = ""
-if "pdf_year" not in st.session_state: st.session_state.pdf_year = ""
-if "pdf_vol" not in st.session_state: st.session_state.pdf_vol = ""
-if "pdf_report" not in st.session_state: st.session_state.pdf_report = "SCC"
-if "pdf_page" not in st.session_state: st.session_state.pdf_page = ""
-if "pdf_court" not in st.session_state: st.session_state.pdf_court = ""
-
-# 3. Custom Visual Styling
+# Custom Visual Styling
 st.markdown("""
     <style>
     .main-title {
@@ -46,88 +33,36 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER ---
 st.markdown("<h1 class='main-title'>✒️ Nischal Citation</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Premium OSCOLA 4th Edition Citation Suite</p>", unsafe_allow_html=True)
 
-# --- EXPERIMENTAL PDF SCANNER PANEL ---
-st.markdown("### 🛠️ Smart PDF Auto-Parser (Optional)")
-uploaded_file = st.file_uploader("Upload a Judgment PDF to auto-fill details below", type=["pdf"])
-
-if uploaded_file is not None:
-    try:
-        reader = PdfReader(uploaded_file)
-        # Pull text maps from the first two structural pages
-        text_chunk = ""
-        for i in range(min(2, len(reader.pages))):
-            text_chunk += reader.pages[i].extract_text() or ""
-        
-        # --- 1. CASE TITLE CLEAN EXTRACTOR ---
-        pdf_case_title = ""
-        lines = text_chunk.split('\n')
-        for line in lines[:40]:
-            line_str = line.strip()
-            if "manupatra" in line_str.lower() or "equivalent" in line_str.lower(): continue
-            if re.search(r'\bVs\.?\b|\bv\.?\b|\bVersus\b', line_str, re.IGNORECASE):
-                line_str = re.sub(r'Hon\'ble.*|Decided.*|Civil.*', '', line_str, flags=re.IGNORECASE).strip()
-                parts = re.split(r'\bVs\.?\b|\bv\.?\b|\bVersus\b', line_str, flags=re.IGNORECASE)
-                if len(parts) == 2 and len(parts[0].strip()) > 2:
-                    pdf_case_title = f"{parts[0].strip()} v {parts[1].strip()}"
-                    break
-        
-        if not pdf_case_title:
-            fallback_match = re.search(r'([A-Z\.\s’\']{3,})\s+(?:Vs\.?|v\.?|Versus)\s+([A-Z\.\s’\']{3,})', text_chunk)
-            st.session_state.pdf_name = fallback_match.group(0).strip() if fallback_match else "Parsed Case Name"
-        else:
-            st.session_state.pdf_name = pdf_case_title
-
-        # --- 2. COURT JURISDICTION ---
-        if "SUPREME COURT OF INDIA" in text_chunk.upper(): st.session_state.pdf_court = "SC"
-        elif "DELHI" in text_chunk.upper(): st.session_state.pdf_court = "Del HC"
-        elif "KARNATAKA" in text_chunk.upper(): st.session_state.pdf_court = "Kar HC"
-
-        # --- 3. PATTERN REPORTER MATCHERS ---
-        scc_format = re.search(r'\((\d{4})\)\s*(\d+)\s*SCC\s*(\d+)', text_chunk)
-        air_format = re.search(r'AIR\s*(\d{4})\s*SC\s*(\d+)', text_chunk, re.IGNORECASE)
-        
-        if scc_format:
-            st.session_state.pdf_year = scc_format.group(1)
-            st.session_state.pdf_vol = scc_format.group(2)
-            st.session_state.pdf_report = "SCC"
-            st.session_state.pdf_page = scc_format.group(3)
-        elif air_format:
-            st.session_state.pdf_year = air_format.group(1)
-            st.session_state.pdf_vol = ""
-            st.session_state.pdf_report = "AIR"
-            st.session_state.pdf_page = air_format.group(2)
-            
-        st.success("PDF analyzed! We've populated the 'Classic Case' tab below. Please review the entries.")
-    except Exception as e:
-        st.error(f"Could not parse this specific PDF text layer: {str(e)}")
-
-st.markdown("---")
-
-# --- SECTION 1: SOURCE PICKER ---
 st.markdown("### 1. Select Source Category")
 mode = st.radio(
     "Choose what you want to cite:",
-    ["Book", "Classic Case (AIR/ITR/AC)", "Online Case (SCC OnLine)", "Journal Article", "Website Link", "Statute / Act"],
-    horizontal=True,
-    label_visibility="collapsed"
+    [
+        "Book", 
+        "Classic Case (AIR/ITR/AC)", 
+        "Online Case (SCC OnLine)", 
+        "Journal Article", 
+        "Website Link", 
+        "Statute / Act",
+        "📂 SCC PDF Reader (Automated)",
+        "📂 Manupatra PDF Reader (Automated)"
+    ],
+    horizontal=False
 )
 
 st.markdown("---")
 
-# --- SECTION 2: VARIABLE INITIALIZATION & DYNAMIC FIELDS ---
 output_str = ""
 pinpoint = ""
 
-st.markdown("### 2. Enter Source Details")
+# --- MANUAL ENGINE OPTIONS ---
 
 if mode == "Book":
+    st.markdown("### 2. Enter Source Details")
     title = st.text_input("📚 Book Title")
     author = st.text_input("👤 Author(s)")
-    
     col1, col2, col3 = st.columns(3)
     with col1: year = st.text_input("📅 Year")
     with col2: edition = st.text_input("🔢 Edition (e.g., 3rd)")
@@ -138,19 +73,18 @@ if mode == "Book":
         output_str = f"{author}, *{title}*{edn} {publisher} {year})"
 
 elif mode == "Classic Case (AIR/ITR/AC)":
-    # Loads state elements safely from the PDF extraction engine if matching parameters exist
-    name = st.text_input("⚖️ Case Name", value=st.session_state.pdf_name)
-    
+    st.markdown("### 2. Enter Source Details")
+    name = st.text_input("⚖️ Case Name")
     c1, c2, c3 = st.columns(3)
     with c1:
-        year = st.text_input("📅 Reporter Year", value=st.session_state.pdf_year)
+        year = st.text_input("📅 Reporter Year")
         bracket = st.selectbox("Bracket Style", ["round ()", "square []"])
     with c2:
-        volume = st.text_input("🔢 Volume Number", value=st.session_state.pdf_vol)
-        report = st.text_input("🔤 Report Abbreviation", value=st.session_state.pdf_report)
+        volume = st.text_input("🔢 Volume Number")
+        report = st.text_input("🔤 Report Abbreviation")
     with c3:
-        page = st.text_input("📄 Starting Page", value=st.session_state.pdf_page)
-        court = st.text_input("🏛️ Court Suffix", value=st.session_state.pdf_court)
+        page = st.text_input("📄 Starting Page")
+        court = st.text_input("🏛️ Court Suffix")
 
     if name and year and report and page:
         b_open, b_close = ("(", ")") if "round" in bracket else ("[", "]")
@@ -159,29 +93,28 @@ elif mode == "Classic Case (AIR/ITR/AC)":
         output_str = f"*{name}* {b_open}{year}{b_close}{vol_str} {report} {page}{court_str}"
 
 elif mode == "Online Case (SCC OnLine)":
-    name = st.text_input("⚖️ Case Name", value=st.session_state.pdf_name)
-    
+    st.markdown("### 2. Enter Source Details")
+    name = st.text_input("⚖️ Case Name")
     c1, c2, c3 = st.columns([1, 1.5, 1.5])
-    with c1: year = st.text_input("📅 Database Year", value=st.session_state.pdf_year)
+    with c1: year = st.text_input("📅 Database Year")
     with c2:
         platform = st.text_input("💻 Platform", value="SCC OnLine")
-        court = st.text_input("🏛️ Court Suffix", value=st.session_state.pdf_court)
-    with c3: case_num = st.text_input("🔢 Unique Electronic No. (e.g., Del 3602)")
+        court = st.text_input("🏛️ Court Suffix")
+    with c3: case_num = st.text_input("🔢 Unique Electronic No.")
 
     if name and year and case_num:
         court_str = f" ({court})" if court else ""
         output_str = f"*{name}* {year} {platform} {case_num}{court_str}"
 
 elif mode == "Journal Article":
+    st.markdown("### 2. Enter Source Details")
     title = st.text_input("📰 Article Title")
     author = st.text_input("👤 Author(s)")
-    
     c1, c2, c3, c4 = st.columns(4)
     with c1: year = st.text_input("📅 Year")
     with c2: vol = st.text_input("Volume")
     with c3: issue = st.text_input("Issue")
     with c4: first_page = st.text_input("First Page")
-    
     journal = st.text_input("🔤 Journal Abbreviation / Name")
 
     if author and title and journal:
@@ -190,8 +123,8 @@ elif mode == "Journal Article":
         output_str = f"{author}, '{title}' ({year}){vol_issue} *{journal}* {first_page}"
 
 elif mode == "Website Link":
+    st.markdown("### 2. Enter Source Details")
     url = st.text_input("🔗 Paste URL Link")
-    
     if st.button("⚡ Auto-Fetch Details From Link"):
         if url:
             if not url.startswith("http://") and not url.startswith("https://"): url = "https://" + url
@@ -199,14 +132,11 @@ elif mode == "Website Link":
                 headers = {"User-Agent": "Mozilla/5.0"}
                 response = requests.get(url, headers=headers, timeout=5)
                 soup = BeautifulSoup(response.text, "html.parser")
-                fetched_title = soup.title.string.strip() if soup.title else "Webpage"
-                if " - " in fetched_title: fetched_title = fetched_title.split(" - ")[0]
+                st.session_state.fetched_title = soup.title.string.strip() if soup.title else "Webpage"
+                if " - " in st.session_state.fetched_title: st.session_state.fetched_title = st.session_state.fetched_title.split(" - ")[0]
                 parsed_domain = urlparse(url).netloc
-                fetched_site = parsed_domain.replace("www.", "").split(".")[0].capitalize()
-                st.session_state.fetched_title = fetched_title
-                st.session_state.fetched_site = fetched_site
+                st.session_state.fetched_site = parsed_domain.replace("www.", "").split(".")[0].capitalize()
                 st.session_state.fetched_date = datetime.now().strftime("%d %B %Y")
-                st.success("Details updated below!")
             except Exception as e: st.error(f"Auto-fetch failed: {str(e)}")
 
     web_author = st.text_input("👤 Author (Leave blank if unknown)")
@@ -221,11 +151,88 @@ elif mode == "Website Link":
         output_str = f"{auth_str}'{web_title}'{site_str} <{url}>{acc_str}"
 
 elif mode == "Statute / Act":
+    st.markdown("### 2. Enter Source Details")
     col_s1, col_s2 = st.columns([3, 1])
     with col_s1: title = st.text_input("📜 Short Title of Act")
     with col_s2: year = st.text_input("📅 Year")
 
     if title and year: output_str = f"{title} {year}"
+
+# --- AUTOMATED PDF ENGINES ---
+
+elif mode == "📂 SCC PDF Reader (Automated)":
+    st.markdown("### 2. Upload SCC OnLine Judgment PDF")
+    scc_file = st.file_uploader("Drop SCC document here", type=["pdf"])
+    if scc_file:
+        try:
+            reader = PdfReader(scc_file)
+            first_pages_text = "".join([page.extract_text() for page in reader.pages[:2]])
+            
+            # Extract Case Name (Looks for text between parties or specific caps layouts)
+            case_name = "Unknown v Unknown"
+            title_match = re.search(r'([A-Z\s\.\-\’\']+)\s+Versus\s+([A-Z\s\.\-\’\']+)', first_pages_text, re.IGNORECASE)
+            if title_match:
+                case_name = f"{title_match.group(1).strip()} v {title_match.group(2).strip()}"
+                case_name = re.sub(r'\s+', ' ', case_name)
+            
+            # Extract OSCOLA SCC OnLine layout format: 2026 SCC OnLine Del 450
+            scc_match = re.search(r'(\d{4})\s*SCC\s*OnLine\s*([A-Za-z\s]+)\s*(\d+)', first_pages_text)
+            
+            if scc_match:
+                year = scc_match.group(1).strip()
+                court_extracted = scc_match.group(2).strip()
+                case_no = scc_match.group(3).strip()
+                output_str = f"*{case_name}* {year} SCC OnLine {court_extracted} {case_no}"
+            else:
+                # Fallback to neutral Classic citation format if published in regular SCC reporter logs
+                classic_match = re.search(r'\((\d{4})\)\s*(\d+)\s*SCC\s*(\d+)', first_pages_text)
+                if classic_match:
+                    year, vol, page = classic_match.groups()
+                    output_str = f"*{case_name}* ({year}) {vol} SCC {page}"
+                else:
+                    st.warning("Could not automatically locate the SCC citation text line. Here is what we found:")
+                    output_str = f"*{case_name}*"
+
+        except Exception as e:
+            st.error(f"Error parsing SCC document structural layer: {e}")
+
+elif mode == "📂 Manupatra PDF Reader (Automated)":
+    st.markdown("### 2. Upload Manupatra Judgment PDF")
+    manu_file = st.file_uploader("Drop Manupatra document here", type=["pdf"])
+    if manu_file:
+        try:
+            reader = PdfReader(manu_file)
+            first_pages_text = "".join([page.extract_text() for page in reader.pages[:2]])
+            
+            # Extract Case Name from typical Manupatra headers
+            case_name = "Unknown v Unknown"
+            title_match = re.search(r'In\s+the\s+High\s+Court\s+of.*?\n(.*?)\s+vs\.\s+(.*?)\n', first_pages_text, re.IGNORECASE | re.DOTALL)
+            if not title_match:
+                title_match = re.search(r'([A-Z\s\.\-\’\']+)\s+vs\.?\s+([A-Z\s\.\-\’\']+)', first_pages_text, re.IGNORECASE)
+            if title_match:
+                case_name = f"{title_match.group(1).strip()} v {title_match.group(2).strip()}"
+                case_name = re.sub(r'\s+', ' ', case_name)
+
+            # Match typical standard high-frequency Indian reporter citations (e.g. AIR 2024 SC 122)
+            air_match = re.search(r'AIR\s*(\d{4})\s*([A-Z\s]+)\s*(\d+)', first_pages_text, re.IGNORECASE)
+            
+            if air_match:
+                year = air_match.group(1).strip()
+                court_extracted = air_match.group(2).strip()
+                page = air_match.group(3).strip()
+                output_str = f"*{case_name}* [{year}] {court_extracted} {page}"
+            else:
+                # Fallback to Manu platform digital signature tag lines: MANU/SC/1042/2025
+                manu_sign = re.search(r'MANU\s*/\s*([A-Z]+)\s*/\s*(\d+)\s*/\s*(\d{4})', first_pages_text)
+                if manu_sign:
+                    court_extracted, doc_id, year = manu_sign.groups()
+                    output_str = f"*{case_name}* [{year}] MANU/{court_extracted}/{doc_id}"
+                else:
+                    output_str = f"*{case_name}*"
+                    st.warning("Found case name, but no standard public legal reporter signature match found.")
+
+        except Exception as e:
+            st.error(f"Error parsing Manupatra document structural layer: {e}")
 
 # --- SECTION 3: PINPOINT SYSTEM ---
 st.markdown("### 3. Pinpoint / Jump Numbers (Optional)")
@@ -249,4 +256,4 @@ if output_str:
     clean_citation = " ".join(final_citation.split())
     st.info(clean_citation)
 else:
-    st.caption("Awaiting entries... Populate the fields above to see your citation.")
+    st.caption("Awaiting data inputs or file uploading sequence above...")
