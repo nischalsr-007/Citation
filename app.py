@@ -79,7 +79,6 @@ if mode == "Book":
     with col3: publisher = st.text_input("🏢 Publisher")
 
     if author and title:
-        # Strict OSCOLA casing preservation from direct inputs
         edn_str = f"{edition.replace('edn','').strip()} edn, " if edition else ""
         output_str = f"{author.strip()}, *{title.strip()}* ({edn_str}{publisher.strip()} {year.strip()})"
 
@@ -193,6 +192,8 @@ elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
                     You are an expert legal archivist. Analyze the following legal text extracted from a judgment document and format it strictly as a single, COMPLETE OSCOLA 4th Edition footnote citation.
 
                     CRITICAL CONSTRAINT: You MUST output the absolute full citation string, including the case name, year, reporter abbreviation, volume, and starting page number. If the provided text layout snippet does not explicitly list the citation numeric attributes but you recognize the benchmark case, rely on your internal legal knowledge base to supply the missing official citation items (e.g., if you recognize 'Umashankar Agrawal v Daulatram Sahu', automatically append 'AIR 2011 Chhatisgarh 72').
+
+                    ANTI-HALLUCINATION FILTER: The text contains repetitive publisher copyright watermarks at the top/bottom of pages like "Eastern Book Company v. D.B. Modak" or "Modak, (2008) 1 SCC 1". IGNORE THIS ENTIRELY. It is NOT the case you are reading. Look further down the text layer for the true parties listed as "Petitioners" and "Respondents" (e.g., A.K. Kraipak v Union of India).
 
                     Follow these strict formatting constraints based on the OSCOLA 4th Edition guide:
                     1. Use AS LITTLE PUNCTUATION AS POSSIBLE. Do not use periods inside acronyms, titles, or suffixes (e.g., use 'v' instead of 'v.', use 'Ors' instead of 'Ors.', use 'SCC' in all caps, use 'SC' in all caps, use 'AIR' in all caps).
