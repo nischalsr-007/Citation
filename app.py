@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 import re
 import os
 from pypdf import PdfReader
+from google import genai
+from google.genai import types
 
 # Page Configuration
 st.set_page_config(
@@ -13,6 +15,14 @@ st.set_page_config(
     page_icon="✒️",
     layout="centered"
 )
+
+# Initialize Gemini Client securely from Streamlit Secrets vault
+ai_client = None
+if "GEMINI_API_KEY" in st.secrets:
+    try:
+        ai_client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    except Exception as e:
+        st.error(f"Failed to initialize Gemini Client: {e}")
 
 # Custom Visual Styling
 st.markdown("""
@@ -47,8 +57,7 @@ mode = st.radio(
         "Journal Article", 
         "Website Link", 
         "Statute / Act",
-        "📂 SCC PDF Reader (Automated)",
-        "📂 Manupatra PDF Reader (Automated)"
+        "📂 AI PDF Reader (Automated SCC & Manupatra)"
     ],
     horizontal=False
 )
@@ -63,18 +72,14 @@ def clean_and_capitalize_title(raw_text):
     """Strips punctuation dots, standardizes 'v', and forces clean title-casing for legal formatting."""
     if not raw_text:
         return ""
-    
     text = re.sub(r'\bcom\b$', '', raw_text, flags=re.IGNORECASE)
     text = text.replace('.', '')
-    
     text = re.sub(r'\bunion of indias\b', 'Union of India', text, flags=re.IGNORECASE)
     text = re.sub(r'\bunion of india and ors\b|\bors v union of india\b', 'Union of India and Ors', text, flags=re.IGNORECASE)
-    
     text = re.sub(r'\bvs\b|\bvs\.\b|\bversus\b', ' v ', text, flags=re.IGNORECASE)
     text = re.sub(r'\s+', ' ', text).strip()
     
     lowercase_exceptions = ['v', 'and', 'of', 'the', 'through', 'in', 'ex', 'p', 'on', 'at', 'an', 'or', 'for', 'with', 'by', 'since', 'deceased']
-    
     words = text.split()
     formatted_words = []
     for idx, w in enumerate(words):
@@ -83,9 +88,9 @@ def clean_and_capitalize_title(raw_text):
             formatted_words.append('v')
         elif w_lower in lowercase_exceptions and idx != 0:
             formatted_words.append(w_lower)
-        elif w_lower == '(since' or w_lower == 'since':
+        elif w_lower in ['(since', 'since']:
             formatted_words.append('(since')
-        elif w_lower == 'deceased)' or w_lower == 'deceased':
+        elif w_lower in ['deceased)', 'deceased']:
             formatted_words.append('deceased)')
         elif w_lower == '&':
             formatted_words.append('&')
@@ -139,11 +144,9 @@ elif mode == "Classic Case (AIR/ITR/AC)":
         c_name = clean_and_capitalize_title(name)
         c_report = clean_and_capitalize_title(report)
         c_court = clean_and_capitalize_title(court)
-        
         b_open, b_close = ("(", ")") if "round" in bracket else ("[", "]")
         vol_str = f" {volume.strip()}" if volume else ""
         court_str = f" ({c_court})" if c_court else ""
-        
         output_str = f"*{c_name}* {b_open}{year.strip()}{b_close}{vol_str} {c_report} {page.strip()}{court_str}"
 
 elif mode == "Online Case (SCC OnLine)":
@@ -222,110 +225,61 @@ elif mode == "Statute / Act":
     if title and year:
         output_str = f"{clean_and_capitalize_title(title)} {year.strip()}"
 
-# --- AUTOMATED PDF ENGINES ---
+# --- INTELLIGENT AI PDF ENGINE ---
 
-elif mode == "📂 SCC PDF Reader (Automated)":
-    st.markdown("### 2. Upload SCC OnLine Judgment PDF")
-    scc_file = st.file_uploader("Drop SCC document here", type=["pdf"])
-    if scc_file:
-        try:
-            reader = PdfReader(scc_file)
-            first_pages_text = "".join([page.extract_text() for page in reader.pages[:3]])
-            
-            raw_filename, _ = os.path.splitext(scc_file.name)
-            cleaned_filename = re.sub(r'[\d_()\-\[\]]+', ' ', raw_filename).strip()
-            
-            if "isaac cooke" in first_pages_text.lower() or "eshelby" in first_pages_text.lower() or "isaac cooke" in cleaned_filename.lower():
-                extracted_name = "Isaac Cooke & Sons v Henry Douglas Eshelby"
-            elif "nidha sah" in first_pages_text.lower() or "murli dhar" in first_pages_text.lower() or "nidha sah" in cleaned_filename.lower():
-                extracted_name = "Nidha Sah (since deceased) and Sant Din v Murli Dhar and Ors"
-            elif "bharat sanchar" in first_pages_text.lower() or "bsnl" in first_pages_text.lower():
-                extracted_name = "Bharat Sanchar Nigam Ltd and Anr v Union of India and Ors"
-            elif "financial corporation" in first_pages_text.lower() or "rajesh gupta" in first_pages_text.lower():
-                extracted_name = "Haryana Financial Corporation and Ors v Rajesh Gupta"
-            elif " vs " in cleaned_filename.lower() or " v " in cleaned_filename.lower():
-                extracted_name = cleaned_filename
-            elif reader.metadata and reader.metadata.title:
-                extracted_name = reader.metadata.title
-            else:
-                title_match = re.search(r'([A-Z\s\.\-\’\']+)\s+Versus\s+([A-Z\s\.\-\’\']+)', first_pages_text, re.IGNORECASE)
-                extracted_name = f"{title_match.group(1)} v {title_match.group(2)}" if title_match else "Parsed Case Name"
+elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
+    st.markdown("### 2. Upload Judgment PDF (SCC / Manupatra / Classic)")
+    uploaded_pdf = st.file_uploader("Drop any legal judgment file here", type=["pdf"])
+    
+    if uploaded_pdf:
+        if not ai_client:
+            st.error("Gemini API key is missing. Please add GEMINI_API_KEY to your Streamlit secrets vault.")
+        else:
+            with st.spinner("AI is analyzing document structural layers and generating OSCOLA layout..."):
+                try:
+                    # Pull text layer for prompt injection mapping
+                    reader = PdfReader(uploaded_pdf)
+                    doc_content = ""
+                    for i in range(min(4, len(reader.pages))):
+                        doc_content += reader.pages[i].extract_text() or ""
+                    
+                    ai_prompt = f"""
+                    You are an expert Indian legal archivist. Analyze the following legal text extracted from the first few pages of a judgment document. 
+                    Extract the primary case information and format it strictly as a single OSCOLA 4th Edition footnote citation.
 
-            case_name = clean_and_capitalize_title(extracted_name)
+                    Follow these strict formatting constraints based on the OSCOLA 4th Edition guide:
+                    1. Use AS LITTLE PUNCTUATION AS POSSIBLE. Do not use periods inside acronyms, titles, or suffixes (e.g., use 'v' instead of 'v.', use 'Ors' instead of 'Ors.', use 'SC' instead of 'S.C.').
+                    2. Standardize case party splits to use a lowercase 'v'.
+                    3. Retain complete multi-party details when they are officially present in the text structure (e.g., 'and Anr', 'and Ors', '(since deceased) and Sant Din').
+                    4. Prioritize clean publication citations. For instance:
+                       - If it's a Supreme Court case matching SCC criteria, layout format should follow: Case Name (Year) Vol SCC Page (SC)
+                       - If it's a classic case reporter like AIR, follow: Case Name AIR Year SC Page
+                       - If it's an online or electronic signature database like Manupatra, follow: Case Name [Year] MANU/Court/DocNumber
+                    5. Ensure proper title-casing capitalizations for all company, party, publisher, and court names (e.g., 'Isaac Cooke & Sons', 'Penguin Books'). Space abbreviations out cleanly if they are running together (e.g., 'Guj HC' instead of 'GujHC').
 
-            classic_match = re.search(r'\((\d{4})\)\s*(\d+)\s*SCC\s*(\d+)', first_pages_text)
-            scc_online_match = re.search(r'(\d{4})\s*SCC\s*OnLine\s*([A-Za-z\s]+)\s*(\d+)', first_pages_text)
+                    Here is the text layer to process:
+                    ---
+                    Filename: {uploaded_pdf.name}
+                    Text content snippet:
+                    {doc_content}
+                    ---
 
-            if "isaac cooke" in case_name.lower():
-                output_str = f"*{case_name}* (1887) 12 App Cas 271"
-            elif "nidha sah" in case_name.lower():
-                output_str = f"*{case_name}* [1903] 25 All 115 (PC)"
-            elif "bharat sanchar" in case_name.lower():
-                output_str = f"*{case_name}* (2006) 3 SCC 1 (SC)"
-            elif scc_online_match:
-                year, court_ext, case_no = scc_online_match.groups()
-                clean_court = clean_and_capitalize_title(court_ext)
-                output_str = f"*{case_name}* {year.strip()} SCC OnLine {clean_court} {case_no.strip()}"
-            elif classic_match:
-                year, vol, page = classic_match.groups()
-                output_str = f"*{case_name}* ({year.strip()}) {vol.strip()} SCC {page.strip()}"
-            else:
-                output_str = f"*{case_name}*"
-
-        except Exception as e:
-            st.error(f"Error parsing SCC document: {e}")
-
-elif mode == "📂 Manupatra PDF Reader (Automated)":
-    st.markdown("### 2. Upload Manupatra Judgment PDF")
-    manu_file = st.file_uploader("Drop Manupatra document here", type=["pdf"])
-    if manu_file:
-        try:
-            reader = PdfReader(manu_file)
-            first_pages_text = "".join([page.extract_text() for page in reader.pages[:3]])
-            
-            raw_filename, _ = os.path.splitext(manu_file.name)
-            cleaned_filename = re.sub(r'[\d_()\-\[\]]+', ' ', raw_filename).strip()
-
-            if "isaac cooke" in first_pages_text.lower() or "eshelby" in first_pages_text.lower() or "isaac cooke" in cleaned_filename.lower():
-                extracted_name = "Isaac Cooke & Sons v Henry Douglas Eshelby"
-            elif "nidha sah" in first_pages_text.lower() or "murli dhar" in first_pages_text.lower() or "nidha sah" in cleaned_filename.lower():
-                extracted_name = "Nidha Sah (since deceased) and Sant Din v Murli Dhar and Ors"
-            elif "bharat sanchar" in first_pages_text.lower() or "bsnl" in first_pages_text.lower():
-                extracted_name = "Bharat Sanchar Nigam Ltd and Anr v Union of India and Ors"
-            elif "vinod seth" in first_pages_text.lower() or "devinder bajaj" in first_pages_text.lower():
-                extracted_name = "Vinod Seth v Devinder Bajaj and Ors"
-            else:
-                if " vs " in cleaned_filename.lower() or " v " in cleaned_filename.lower():
-                    extracted_name = cleaned_filename
-                elif reader.metadata and reader.metadata.title:
-                    extracted_name = reader.metadata.title
-                else:
-                    extracted_name = "Parsed Case Name"
-
-            case_name = clean_and_capitalize_title(extracted_name)
-
-            air_match = re.search(r'AIR\s*(\d{4})\s*SC\s*(\d+)', first_pages_text, re.IGNORECASE)
-            manu_sign = re.search(r'MANU\s*/\s*([A-Z]+)\s*/\s*(\d+)\s*/\s*(\d{4})', first_pages_text)
-
-            if "isaac cooke" in case_name.lower():
-                output_str = f"*{case_name}* (1887) 12 App Cas 271"
-            elif "nidha sah" in case_name.lower():
-                output_str = f"*{case_name}* [1903] 25 All 115 (PC)"
-            elif "bharat sanchar" in case_name.lower():
-                output_str = f"*{case_name}* (2006) 3 SCC 1 (SC)"
-            elif "vinod seth" in case_name.lower():
-                output_str = f"*{case_name}* [2010] MANU/SC/0424"
-            elif air_match:
-                year, page = air_match.groups()
-                output_str = f"*{case_name}* AIR {year.strip()} SC {page.strip()}"
-            elif manu_sign:
-                court_ext, doc_id, year = manu_sign.groups()
-                output_str = f"*{case_name}* [{year.strip()}] MANU/{court_ext.strip()}/{doc_id.strip()}"
-            else:
-                output_str = f"*{case_name}*"
-
-        except Exception as e:
-            st.error(f"Error parsing Manupatra document: {e}")
+                    Respond ONLY with the final formatted citation string. Do not include markdown blocks, introductory pleasantries, or additional details.
+                    """
+                    
+                    response = ai_client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=ai_prompt,
+                    )
+                    
+                    raw_output = response.text.strip()
+                    # Clean up random markdown backticks if returned by the AI framework
+                    raw_output = raw_output.replace('`', '').replace('*', '')
+                    output_str = clean_and_capitalize_title(raw_output)
+                    
+                    st.success("AI extraction completed successfully!")
+                except Exception as e:
+                    st.error(f"AI engine error: {e}")
 
 # --- SECTION 3: PINPOINT SYSTEM ---
 st.markdown("### 3. Pinpoint / Jump Numbers (Optional)")
