@@ -67,47 +67,6 @@ st.markdown("---")
 output_str = ""
 pinpoint = ""
 
-# --- HELPER AUTOMATED TEXT FORMATTER ---
-def clean_and_capitalize_title(raw_text):
-    """Strips punctuation dots, standardizes 'v', and forces clean title-casing for legal formatting."""
-    if not raw_text:
-        return ""
-    text = re.sub(r'\bcom\b$', '', raw_text, flags=re.IGNORECASE)
-    text = text.replace('.', '')
-    text = re.sub(r'\bunion of indias\b', 'Union of India', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bunion of india and ors\b|\bors v union of india\b', 'Union of India and Ors', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bvs\b|\bvs\.\b|\bversus\b', ' v ', text, flags=re.IGNORECASE)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    lowercase_exceptions = ['v', 'and', 'of', 'the', 'through', 'in', 'ex', 'p', 'on', 'at', 'an', 'or', 'for', 'with', 'by', 'since', 'deceased']
-    words = text.split()
-    formatted_words = []
-    for idx, w in enumerate(words):
-        w_lower = w.lower()
-        if w_lower == 'v':
-            formatted_words.append('v')
-        elif w_lower in lowercase_exceptions and idx != 0:
-            formatted_words.append(w_lower)
-        elif w_lower in ['(since', 'since']:
-            formatted_words.append('(since')
-        elif w_lower in ['deceased)', 'deceased']:
-            formatted_words.append('deceased)')
-        elif w_lower == '&':
-            formatted_words.append('&')
-        else:
-            if w_lower == 'sc':
-                formatted_words.append('SC')
-            elif w_lower == 'gujhc':
-                formatted_words.append('Guj HC')
-            elif w_lower == 'delhc':
-                formatted_words.append('Del HC')
-            else:
-                formatted_words.append(w.capitalize())
-            
-    result = " ".join(formatted_words)
-    result = result.replace('((', '(').replace('))', ')')
-    return result
-
 # --- MANUAL ENGINE OPTIONS ---
 
 if mode == "Book":
@@ -120,11 +79,9 @@ if mode == "Book":
     with col3: publisher = st.text_input("🏢 Publisher")
 
     if author and title:
-        c_author = clean_and_capitalize_title(author)
-        c_title = clean_and_capitalize_title(title)
-        c_pub = clean_and_capitalize_title(publisher)
+        # Strict OSCOLA casing preservation from direct inputs
         edn_str = f"{edition.replace('edn','').strip()} edn, " if edition else ""
-        output_str = f"{c_author}, *{c_title}* ({edn_str}{c_pub} {year.strip()})"
+        output_str = f"{author.strip()}, *{title.strip()}* ({edn_str}{publisher.strip()} {year.strip()})"
 
 elif mode == "Classic Case (AIR/ITR/AC)":
     st.markdown("### 2. Enter Source Details")
@@ -141,13 +98,10 @@ elif mode == "Classic Case (AIR/ITR/AC)":
         court = st.text_input("🏛️ Court Suffix")
 
     if name and year and report and page:
-        c_name = clean_and_capitalize_title(name)
-        c_report = clean_and_capitalize_title(report)
-        c_court = clean_and_capitalize_title(court)
         b_open, b_close = ("(", ")") if "round" in bracket else ("[", "]")
         vol_str = f" {volume.strip()}" if volume else ""
-        court_str = f" ({c_court})" if c_court else ""
-        output_str = f"*{c_name}* {b_open}{year.strip()}{b_close}{vol_str} {c_report} {page.strip()}{court_str}"
+        court_str = f" ({court.strip()})" if court else ""
+        output_str = f"*{name.strip()}* {b_open}{year.strip()}{b_close}{vol_str} {report.strip()} {page.strip()}{court_str}"
 
 elif mode == "Online Case (SCC OnLine)":
     st.markdown("### 2. Enter Source Details")
@@ -160,10 +114,8 @@ elif mode == "Online Case (SCC OnLine)":
     with c3: case_num = st.text_input("🔢 Unique Electronic No.")
 
     if name and year and case_num:
-        c_name = clean_and_capitalize_title(name)
-        c_court = clean_and_capitalize_title(court)
-        court_str = f" ({c_court})" if c_court else ""
-        output_str = f"*{c_name}* {year.strip()} {platform.strip()} {case_num.strip()}{court_str}"
+        court_str = f" ({court.strip()})" if court else ""
+        output_str = f"*{name.strip()}* {year.strip()} {platform.strip()} {case_num.strip()}{court_str}"
 
 elif mode == "Journal Article":
     st.markdown("### 2. Enter Source Details")
@@ -177,12 +129,9 @@ elif mode == "Journal Article":
     journal = st.text_input("🔤 Journal Abbreviation / Name")
 
     if author and title and journal:
-        c_auth = clean_and_capitalize_title(author)
-        c_title = clean_and_capitalize_title(title)
-        c_journ = clean_and_capitalize_title(journal)
         vol_issue = f" {vol.strip()}" if vol else ""
         if issue: vol_issue += f"({issue.strip()})"
-        output_str = f"{c_auth}, '{c_title}' ({year.strip()}){vol_issue} *{c_journ}* {first_page.strip()}"
+        output_str = f"{author.strip()}, '{title.strip()}' ({year.strip()}){vol_issue} *{journal.strip()}* {first_page.strip()}"
 
 elif mode == "Website Link":
     st.markdown("### 2. Enter Source Details")
@@ -211,10 +160,8 @@ elif mode == "Website Link":
     web_access = st.text_input("📅 Date Accessed", value=st.session_state.w_date)
 
     if web_title and url:
-        c_auth = clean_and_capitalize_title(web_author) + ", " if web_author else ""
-        c_title = clean_and_capitalize_title(web_title)
-        c_site = clean_and_capitalize_title(web_site)
-        output_str = f"{c_auth}'{c_title}' ({c_site}, {web_access.strip()}) <{url.strip()}> accessed {web_access.strip()}"
+        c_auth = web_author.strip() + ", " if web_author else ""
+        output_str = f"{c_auth}'{web_title.strip()}' ({web_site.strip()}, {web_access.strip()}) <{url.strip()}> accessed {web_access.strip()}"
 
 elif mode == "Statute / Act":
     st.markdown("### 2. Enter Source Details")
@@ -223,7 +170,7 @@ elif mode == "Statute / Act":
     with col_s2: year = st.text_input("📅 Year")
 
     if title and year:
-        output_str = f"{clean_and_capitalize_title(title)} {year.strip()}"
+        output_str = f"{title.strip()} {year.strip()}"
 
 # --- INTELLIGENT AI PDF ENGINE ---
 
@@ -237,7 +184,6 @@ elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
         else:
             with st.spinner("AI is analyzing document structural layers and generating OSCOLA layout..."):
                 try:
-                    # Pull text layer for prompt injection mapping
                     reader = PdfReader(uploaded_pdf)
                     doc_content = ""
                     for i in range(min(4, len(reader.pages))):
@@ -249,7 +195,7 @@ elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
                     CRITICAL CONSTRAINT: You MUST output the absolute full citation string, including the case name, year, reporter abbreviation, volume, and starting page number. If the provided text layout snippet does not explicitly list the citation numeric attributes but you recognize the benchmark case, rely on your internal legal knowledge base to supply the missing official citation items (e.g., if you recognize 'Umashankar Agrawal v Daulatram Sahu', automatically append 'AIR 2011 Chhatisgarh 72').
 
                     Follow these strict formatting constraints based on the OSCOLA 4th Edition guide:
-                    1. Use AS LITTLE PUNCTUATION AS POSSIBLE. Do not use periods inside acronyms, titles, or suffixes (e.g., use 'v' instead of 'v.', use 'Ors' instead of 'Ors.', use 'SC' instead of 'S.C.').
+                    1. Use AS LITTLE PUNCTUATION AS POSSIBLE. Do not use periods inside acronyms, titles, or suffixes (e.g., use 'v' instead of 'v.', use 'Ors' instead of 'Ors.', use 'SCC' in all caps, use 'SC' in all caps, use 'AIR' in all caps).
                     2. Standardize case party splits to use a lowercase 'v'.
                     3. Retain complete multi-party details when they are officially present in the text structure (e.g., 'and Anr', 'and Ors', '(since deceased) and Sant Din').
                     4. Prioritize clean publication citations. For instance:
@@ -265,7 +211,7 @@ elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
                     {doc_content}
                     ---
 
-                    Respond ONLY with the final complete formatted citation string. Do not include markdown blocks, introductory pleasantries, or additional descriptions.
+                    Respond ONLY with the final complete formatted citation string. Do not include markdown blocks, introductory pleasantries, or additional descriptions. Preserve exact legal acronym capitalization (e.g. SCC, AIR, SC, MANU).
                     """
                     
                     response = ai_client.models.generate_content(
@@ -274,8 +220,7 @@ elif mode == "📂 AI PDF Reader (Automated SCC & Manupatra)":
                     )
                     
                     raw_output = response.text.strip()
-                    raw_output = raw_output.replace('`', '').replace('*', '')
-                    output_str = clean_and_capitalize_title(raw_output)
+                    output_str = raw_output.replace('`', '').replace('*', '').strip()
                     
                     st.success("AI extraction completed successfully!")
                 except Exception as e:
